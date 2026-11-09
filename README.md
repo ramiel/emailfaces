@@ -3,6 +3,27 @@
 Resolve the avatar associated with an email address from multiple sources. Written in TypeScript, with a Promise API
 (plus an optional [RxJS API](#observable-api)) and first-class rate-limit handling.
 
+## Installation
+
+```sh
+npm install emailfaces
+# or
+pnpm add emailfaces
+# or
+yarn add emailfaces
+# or
+bun add emailfaces
+```
+
+In Deno, import it directly with `import { createAvatarResolver } from "npm:emailfaces";`.
+
+Requires a runtime with `fetch` and Web Crypto (Node ≥ 18, browsers, Deno, Bun, edge workers).
+The package is ESM-only: use `import`, not `require()`. TypeScript typings are included, and
+RxJS is installed automatically as a dependency (there is nothing else to install, even for the
+`emailfaces/rxjs` entry).
+
+## Usage
+
 ```ts
 import { createAvatarResolver } from "emailfaces";
 
@@ -12,8 +33,6 @@ await avatars.resolve("someone@example.com");
 // → { email: 'someone@example.com', source: 'gravatar', url: 'https://gravatar.com/avatar/…?s=200' }
 // → null when no source has one
 ```
-
-Requires a runtime with `fetch` and Web Crypto (Node ≥ 18, browsers, Deno, Bun, edge workers).
 
 ## Sources
 
