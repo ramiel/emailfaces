@@ -17,8 +17,16 @@
     "github",
     "gitlab"
   ],
-  "author": "",
+  "author": "Fabrizio Ruggeri",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramiel/emailfaces.git"
+  },
+  "homepage": "https://github.com/ramiel/emailfaces#readme",
+  "bugs": {
+    "url": "https://github.com/ramiel/emailfaces/issues"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -51,7 +59,8 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "sideEffects": false
 }
