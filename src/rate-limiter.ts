@@ -37,6 +37,7 @@ export class RateLimiter {
    * Runs `work` once a concurrency slot and a rate permit are available.
    * Fails with `RateLimitedError` if the permit would be granted after `deadline` (ms epoch).
    * Unsubscribing while queued frees the place in line.
+   * @internal Stripped from the published typings: RxJS is an implementation detail.
    */
   schedule<T>(work: Observable<T>, deadline = Infinity): Observable<T> {
     return this.withSlot(this.permit(deadline).pipe(switchMap(() => work)));

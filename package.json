@@ -15,8 +15,7 @@
     "gravatar",
     "libravatar",
     "github",
-    "gitlab",
-    "rxjs"
+    "gitlab"
   ],
   "author": "",
   "license": "MIT",
@@ -32,9 +31,11 @@
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "rxjs": "^7.8.2"
+  },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "rxjs": "^7.8.2",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
@@ -42,14 +43,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./rxjs": {
+      "types": "./dist/rxjs.d.ts",
+      "import": "./dist/rxjs.js"
     }
   },
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "sideEffects": false,
-  "peerDependencies": {
-    "rxjs": "^7.8.0"
-  }
+  "sideEffects": false
 }

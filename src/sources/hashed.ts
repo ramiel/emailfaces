@@ -1,4 +1,3 @@
-import { from, map, switchMap } from 'rxjs';
 import { sha256Hex } from '../email.js';
 import { HttpError } from '../errors.js';
 import { toLimiter, type RateLimitOptions, type RateLimiter } from '../rate-limiter.js';
@@ -19,19 +18,13 @@ export function hashedAvatarSource(name: string, defaultBase: string, options: H
   return {
     name,
     limiter: toLimiter(options.rateLimit, defaults),
-    lookup: (email, ctx) =>
-      from(sha256Hex(email.address)).pipe(
-        map((hash) => `${base}/${hash}?s=${ctx.size}`),
-        switchMap((url) =>
-          ctx.request(`${url}&d=404`, { method: 'HEAD' }).pipe(
-            map((res) => {
-              if (res.status === 200) return url;
-              if (res.status === 404) return null;
-              throw new HttpError(res.status, url);
-            }),
-          ),
-        ),
-      ),
+    lookup: async (email, ctx) => {
+      const url = `${base}/${await sha256Hex(email.address)}?s=${ctx.size}`;
+      const res = await ctx.request(`${url}&d=404`, { method: 'HEAD' });
+      if (res.status === 200) return url;
+      if (res.status === 404) return null;
+      throw new HttpError(res.status, url);
+    },
   };
 }
 

@@ -21,6 +21,17 @@ export class HttpError extends Error {
   }
 }
 
+/** A provider didn't answer within `timeoutMs`. */
+export class RequestTimeoutError extends Error {
+  override readonly name = 'RequestTimeoutError';
+  constructor(
+    readonly url: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`No response from ${url} within ${timeoutMs}ms`);
+  }
+}
+
 export class InvalidEmailError extends Error {
   override readonly name = 'InvalidEmailError';
   constructor(readonly input: string) {

@@ -1,4 +1,3 @@
-import { EMPTY, map } from 'rxjs';
 import { HttpError } from '../errors.js';
 import { toLimiter, type RateLimitOptions, type RateLimiter } from '../rate-limiter.js';
 import type { AvatarSource } from '../types.js';
@@ -28,16 +27,13 @@ export function domainIcon(options: DomainIconOptions = {}): AvatarSource {
   return {
     name: 'domain',
     limiter: toLimiter(options.rateLimit, { maxConcurrent: 4 }),
-    lookup: (email, ctx) => {
-      if (ignore.has(email.domain)) return EMPTY;
+    lookup: async (email, ctx) => {
+      if (ignore.has(email.domain)) return null;
       const url = `https://icons.duckduckgo.com/ip3/${encodeURIComponent(email.domain)}.ico`;
-      return ctx.request(url).pipe(
-        map((res) => {
-          if (res.status === 200) return url;
-          if (res.status === 404) return null;
-          throw new HttpError(res.status, url);
-        }),
-      );
+      const res = await ctx.request(url);
+      if (res.status === 200) return url;
+      if (res.status === 404) return null;
+      throw new HttpError(res.status, url);
     },
   };
 }

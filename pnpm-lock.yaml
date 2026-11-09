@@ -165,13 +165,14 @@ settings:
 importers:
 
   .:
+    dependencies:
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

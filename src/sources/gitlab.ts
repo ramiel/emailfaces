@@ -1,4 +1,3 @@
-import { map } from 'rxjs';
 import { HttpError } from '../errors.js';
 import { toLimiter, type RateLimitOptions, type RateLimiter } from '../rate-limiter.js';
 import type { AvatarSource } from '../types.js';
@@ -22,18 +21,18 @@ export function gitlab(options: GitLabOptions = {}): AvatarSource {
   return {
     name: 'gitlab',
     limiter: toLimiter(options.rateLimit, { maxConcurrent: 4, window: { requests: 60, perMs: 60_000 } }),
-    lookup: (email, ctx) => {
+    lookup: async (email, ctx) => {
       const url = `${base}/api/v4/avatar?email=${encodeURIComponent(email.address)}&size=${ctx.size}`;
-      return ctx.request<{ avatar_url?: string | null } | undefined>(url, { headers, read: (r) => (r.ok ? r.json() : Promise.resolve(undefined)) }).pipe(
-        map((res) => {
-          if (res.status === 404) return null;
-          if (res.status !== 200) throw new HttpError(res.status, url);
-          const avatar = res.body?.avatar_url;
-          if (!avatar) return null;
-          const resolved = new URL(avatar, base);
-          return EXTERNAL_AVATAR_HOSTS.test(resolved.hostname) ? null : resolved.toString();
-        }),
-      );
+      const res = await ctx.request<{ avatar_url?: string | null } | undefined>(url, {
+        headers,
+        read: (r) => (r.ok ? r.json() : Promise.resolve(undefined)),
+      });
+      if (res.status === 404) return null;
+      if (res.status !== 200) throw new HttpError(res.status, url);
+      const avatar = res.body?.avatar_url;
+      if (!avatar) return null;
+      const resolved = new URL(avatar, base);
+      return EXTERNAL_AVATAR_HOSTS.test(resolved.hostname) ? null : resolved.toString();
     },
   };
 }

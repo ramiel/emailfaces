@@ -1,4 +1,4 @@
-import { NEVER, of, timer, map, lastValueFrom, toArray } from 'rxjs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import {
   AvatarResolver,
@@ -17,9 +17,10 @@ import { fakeFetch, json, status } from './helpers.js';
 const fixed = (name: string, url: string | null, ms = 0, calls?: string[]): AvatarSource => ({
   name,
   limiter: new RateLimiter(),
-  lookup: () => {
+  lookup: async () => {
     calls?.push(name);
-    return ms ? timer(ms).pipe(map(() => url)) : of(url);
+    if (ms) await sleep(ms);
+    return url;
   },
 });
 
@@ -36,10 +37,22 @@ describe('resolve (strategies)', () => {
     expect((await r.resolve('a@b.co'))?.source).toBe('slow');
   });
 
-  it('parallel returns early without waiting for lower-priority sources', async () => {
-    const hang: AvatarSource = { name: 'hang', limiter: new RateLimiter(), lookup: () => NEVER };
+  it('parallel returns early and aborts lower-priority sources', async () => {
+    let aborted = false;
+    const hang: AvatarSource = {
+      name: 'hang',
+      limiter: new RateLimiter(),
+      lookup: (_, ctx) =>
+        new Promise((_, reject) =>
+          ctx.signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(ctx.signal.reason);
+          }),
+        ),
+    };
     const r = new AvatarResolver({ strategy: 'parallel', sources: [fixed('a', 'A', 5), hang] });
     expect((await r.resolve('a@b.co'))?.url).toBe('A');
+    expect(aborted).toBe(true);
   });
 
   it('returns null, or the fallback, when nothing is found', async () => {
@@ -183,10 +196,10 @@ describe('sources', () => {
   });
 });
 
-describe('resolveMany$', () => {
-  it('streams results and reports invalid emails without failing the batch', async () => {
+describe('resolveMany', () => {
+  it('reports invalid emails without failing the batch', async () => {
     const r = new AvatarResolver({ sources: [fixed('a', 'A')] });
-    const results = await lastValueFrom(r.resolveMany$(['x@y.io', 'bad', 'z@y.io']).pipe(toArray()));
+    const results = await r.resolveMany(['x@y.io', 'bad', 'z@y.io']);
     const byEmail = Object.fromEntries(results.map((x) => [x.email, x]));
     expect(byEmail['x@y.io']?.avatar?.url).toBe('A');
     expect(byEmail['z@y.io']?.avatar?.url).toBe('A');

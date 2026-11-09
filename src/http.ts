@@ -1,11 +1,14 @@
-import { Observable, TimeoutError, map, of, retry, throwError, timeout, timer } from 'rxjs';
-import { HttpError, RateLimitedError } from './errors.js';
+import { Observable, map, of, retry, throwError, timeout, timer } from 'rxjs';
+import { HttpError, RateLimitedError, RequestTimeoutError } from './errors.js';
 import type { RateLimiter } from './rate-limiter.js';
 import type { FetchLike, HttpResponse, RequestOptions } from './types.js';
 
 const DEFAULT_RATE_LIMIT_PAUSE_MS = 60_000;
 
-/** A single fetch, aborted on unsubscribe. The body is read inside the abortable scope. */
+/**
+ * A single fetch, aborted on unsubscribe. The body is read inside the abortable scope.
+ * @internal
+ */
 export function fetch$<T>(fetchFn: FetchLike, url: string, options: RequestOptions<T>): Observable<HttpResponse<T>> {
   return new Observable<HttpResponse<T>>((subscriber) => {
     const controller = new AbortController();
@@ -85,16 +88,19 @@ export interface RequestPolicy {
 
 function isTransient(err: unknown): boolean {
   if (err instanceof HttpError) return err.status >= 500;
-  if (err instanceof TimeoutError) return true;
+  if (err instanceof RequestTimeoutError) return true;
   return err instanceof TypeError; // fetch network failure
 }
 
-/** fetch$ + limiter + timeout + retry policy. */
+/**
+ * fetch$ + limiter + timeout + retry policy.
+ * @internal
+ */
 export function request$<T>(url: string, options: RequestOptions<T>, policy: RequestPolicy): Observable<HttpResponse<T>> {
   const { limiter, deadline } = policy;
   const attempt$ = limiter.schedule(
     fetch$(policy.fetch, url, options).pipe(
-      timeout({ first: policy.timeoutMs }),
+      timeout({ first: policy.timeoutMs, with: () => throwError(() => new RequestTimeoutError(url, policy.timeoutMs)) }),
       map((res) => inspect(res, url, limiter)),
     ),
     deadline,

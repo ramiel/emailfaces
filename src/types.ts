@@ -1,4 +1,3 @@
-import type { Observable } from 'rxjs';
 import type { RateLimiter } from './rate-limiter.js';
 
 export interface EmailInfo {
@@ -37,20 +36,39 @@ export interface RequestOptions<T> {
 export interface SourceContext {
   /**
    * Performs an HTTP request through the source's rate limiter, with timeout,
-   * abort-on-unsubscribe, transient-error retries and rate-limit header handling.
-   * Resolves for any status except 429 / exhausted-quota responses (which become
-   * `RateLimitedError`) and 5xx (which become `HttpError` after retries).
+   * abort-on-cancel (via `signal`), transient-error retries and rate-limit header handling.
+   * Resolves for any status except 429 / exhausted-quota responses (which reject with
+   * `RateLimitedError`) and 5xx (which reject with `HttpError` after retries).
    */
-  request<T = void>(url: string, options?: RequestOptions<T>): Observable<HttpResponse<T>>;
+  request<T = void>(url: string, options?: RequestOptions<T>): Promise<HttpResponse<T>>;
   /** Requested avatar size in pixels. */
   readonly size: number;
+  /**
+   * Aborted when the lookup is no longer needed (caller aborted, or a higher-priority source won).
+   * `request` already honours it; pass it on to any other async work the source does.
+   */
+  readonly signal: AbortSignal;
 }
+
+/**
+ * Structural Observable type (an RxJS `Observable` satisfies it), declared here so the
+ * root entry doesn't depend on RxJS typings.
+ */
+export interface Subscribable<T> {
+  subscribe(observer: { next: (value: T) => void; error: (err: unknown) => void; complete: () => void }): { unsubscribe(): void };
+}
+
+/**
+ * What a source's `lookup` may return: the URL (or null), a Promise of it, or an Observable
+ * whose first value is used (completing empty counts as null; unsubscribing cancels it).
+ */
+export type LookupResult = string | null | Promise<string | null> | Subscribable<string | null>;
 
 export interface AvatarSource {
   readonly name: string;
   readonly limiter: RateLimiter;
-  /** Emit the avatar URL, or null / complete empty when the source has none. */
-  lookup(email: EmailInfo, ctx: SourceContext): Observable<string | null>;
+  /** The avatar URL, or null when the source has none. See `LookupResult`. */
+  lookup(email: EmailInfo, ctx: SourceContext): LookupResult;
 }
 
 export type SourceOutcome =

@@ -1,4 +1,3 @@
-import { map, of } from 'rxjs';
 import { HttpError } from '../errors.js';
 import { toLimiter, type RateLimitOptions, type RateLimiter } from '../rate-limiter.js';
 import type { AvatarSource } from '../types.js';
@@ -40,23 +39,20 @@ export function github(options: GitHubOptions = {}): AvatarSource {
     name: 'github',
     // Search API: 10 req/min anonymous, 30 req/min authenticated.
     limiter: toLimiter(options.rateLimit, { maxConcurrent: 2, window: { requests: options.token ? 30 : 10, perMs: 60_000 } }),
-    lookup: (email, ctx) => {
+    lookup: async (email, ctx) => {
       const noreply = NOREPLY_RE.exec(email.address);
       if (noreply) {
         const [, id, login] = noreply;
-        return of(id ? `https://avatars.githubusercontent.com/u/${id}?s=${ctx.size}` : `https://github.com/${login}.png?size=${ctx.size}`);
+        return id ? `https://avatars.githubusercontent.com/u/${id}?s=${ctx.size}` : `https://github.com/${login}.png?size=${ctx.size}`;
       }
 
       const q = encodeURIComponent(`${email.address} in:email`);
       const url = `${apiUrl}/search/users?q=${q}&per_page=2`;
-      return ctx.request<UserSearch | undefined>(url, { headers, read: (r) => (r.ok ? r.json() : Promise.resolve(undefined)) }).pipe(
-        map((res) => {
-          if (res.status === 422) return null;
-          if (res.status !== 200 || !res.body) throw new HttpError(res.status, url);
-          const [user] = res.body.items;
-          return res.body.total_count === 1 && user ? withSize(user.avatar_url, ctx.size) : null;
-        }),
-      );
+      const res = await ctx.request<UserSearch | undefined>(url, { headers, read: (r) => (r.ok ? r.json() : Promise.resolve(undefined)) });
+      if (res.status === 422) return null;
+      if (res.status !== 200 || !res.body) throw new HttpError(res.status, url);
+      const [user] = res.body.items;
+      return res.body.total_count === 1 && user ? withSize(user.avatar_url, ctx.size) : null;
     },
   };
 }

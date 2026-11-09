@@ -24,13 +24,23 @@ import {
   throwError,
   throwIfEmpty,
   toArray,
+  type ObservableInput,
 } from 'rxjs';
 import { MemoryCache, type AvatarCache, type CacheEntry } from './cache.js';
 import { parseEmail } from './email.js';
 import { InvalidEmailError, RateLimitedError } from './errors.js';
 import { request$ } from './http.js';
 import { defaultSources } from './sources/index.js';
-import type { Avatar, AvatarSource, EmailInfo, FetchLike, SourceContext, SourceOutcome } from './types.js';
+import type {
+  Avatar,
+  AvatarSource,
+  EmailInfo,
+  FetchLike,
+  LookupResult,
+  SourceContext,
+  SourceOutcome,
+  Subscribable,
+} from './types.js';
 
 export type Strategy =
   /** Query sources one at a time in order; stop at the first hit. Spends the least quota. */
@@ -108,10 +118,28 @@ export class AvatarResolver {
     this.fallback = options.fallback;
   }
 
-  // ---------------------------------------------------------------- Observable API
+  // ---------------------------------------------------------------- public API
 
-  /** Best avatar for `email` according to source priority, or null. Errors on invalid email. */
-  resolve$(email: string): Observable<Avatar | null> {
+  /** Best avatar for `email` according to source priority, or null. Rejects on invalid email. */
+  resolve(email: string, options: CallOptions = {}): Promise<Avatar | null> {
+    return firstValueFrom(abortable(this.resolveStream(email), options.signal));
+  }
+
+  /** Every source's outcome (all sources are queried concurrently). */
+  lookup(email: string, options: CallOptions = {}): Promise<SourceOutcome[]> {
+    return lastValueFrom(abortable(this.lookupStream(email).pipe(toArray()), options.signal));
+  }
+
+  /** Resolve many emails with bounded concurrency. Invalid emails are reported per item, not thrown. */
+  resolveMany(emails: Iterable<string>, options: CallOptions & { concurrency?: number } = {}): Promise<ManyResult[]> {
+    return lastValueFrom(abortable(this.resolveManyStream(emails, options).pipe(toArray()), options.signal));
+  }
+
+  // ---------------------------------------------------------------- Observable core
+  // Exposed publicly only by the `emailfaces/rxjs` entry, so the root typings never mention RxJS.
+
+  /** @internal */
+  protected resolveStream(email: string): Observable<Avatar | null> {
     return this.parse$(email).pipe(
       mergeMap((info) => {
         const hit$ = this.strategy === 'parallel' ? this.firstByPriority$(info) : this.firstSequential$(info);
@@ -122,37 +150,23 @@ export class AvatarResolver {
     );
   }
 
-  /** Every source's outcome as it arrives (all sources are queried concurrently). */
-  lookup$(email: string): Observable<SourceOutcome> {
+  /** @internal */
+  protected lookupStream(email: string): Observable<SourceOutcome> {
     return this.parse$(email).pipe(mergeMap((info) => merge(...this.sources.map((s) => this.runSource(s, info)))));
   }
 
-  /** Resolve many emails with bounded concurrency; each result is emitted as soon as it's ready. */
-  resolveMany$(emails: Iterable<string> | Observable<string>, { concurrency = 4 }: { concurrency?: number } = {}): Observable<ManyResult> {
+  /** @internal */
+  protected resolveManyStream(emails: ObservableInput<string>, { concurrency = 4 }: { concurrency?: number }): Observable<ManyResult> {
     return from(emails).pipe(
       mergeMap(
         (email) =>
-          this.resolve$(email).pipe(
+          this.resolveStream(email).pipe(
             map((avatar): ManyResult => ({ email, avatar })),
             catchError((error: unknown) => of<ManyResult>({ email, avatar: null, error })),
           ),
         concurrency,
       ),
     );
-  }
-
-  // ---------------------------------------------------------------- Promise API
-
-  resolve(email: string, options: CallOptions = {}): Promise<Avatar | null> {
-    return firstValueFrom(abortable(this.resolve$(email), options.signal));
-  }
-
-  lookup(email: string, options: CallOptions = {}): Promise<SourceOutcome[]> {
-    return lastValueFrom(abortable(this.lookup$(email).pipe(toArray()), options.signal));
-  }
-
-  resolveMany(emails: Iterable<string>, options: CallOptions & { concurrency?: number } = {}): Promise<ManyResult[]> {
-    return lastValueFrom(abortable(this.resolveMany$(emails, options).pipe(toArray()), options.signal));
   }
 
   // ---------------------------------------------------------------- internals
@@ -226,11 +240,17 @@ export class AvatarResolver {
     );
   }
 
+  /** Runs the source's lookup (value, Promise or Observable); unsubscribing aborts its `ctx.signal`. */
   private fromSource$(source: AvatarSource, info: EmailInfo, key: string): Observable<SourceOutcome> {
-    return defer(() => source.lookup(info, this.contextFor(source))).pipe(
-      defaultIfEmpty(null),
-      take(1),
-      map((url) => toOutcome(source.name, url, false)),
+    return defer(() => {
+      const controller = new AbortController();
+      return defer(() => fromLookup(source.lookup(info, this.contextFor(source, controller.signal)))).pipe(
+        defaultIfEmpty(null),
+        take(1),
+        finalize(() => controller.abort()),
+      );
+    }).pipe(
+      map((url) => toOutcome(source.name, url ?? null, false)),
       tap((outcome) => this.store(key, outcome)),
       catchError((error: unknown) =>
         of<SourceOutcome>(
@@ -242,7 +262,7 @@ export class AvatarResolver {
     );
   }
 
-  private contextFor(source: AvatarSource): SourceContext {
+  private contextFor(source: AvatarSource, signal: AbortSignal): SourceContext {
     const policy = {
       fetch: this.fetchFn,
       limiter: source.limiter,
@@ -250,7 +270,11 @@ export class AvatarResolver {
       retries: this.retries,
       deadline: Date.now() + this.maxWaitMs,
     };
-    return { size: this.size, request: (url, options = {}) => request$(url, options, policy) };
+    return {
+      size: this.size,
+      signal,
+      request: (url, options = {}) => firstValueFrom(abortable(request$(url, options, policy), signal)),
+    };
   }
 
   private store(key: string, outcome: SourceOutcome): void {
@@ -269,6 +293,19 @@ const isFound = (o: SourceOutcome): o is Found => o.status === 'found';
 
 function toOutcome(source: string, url: string | null, cached: boolean): SourceOutcome {
   return url ? { source, status: 'found', url, cached } : { source, status: 'not_found', cached };
+}
+
+/**
+ * Bridges whatever a source returned into our RxJS. Observables are adopted structurally via
+ * `subscribe`, so they work even when they come from another copy of RxJS (or another library).
+ */
+function fromLookup(result: LookupResult): Observable<string | null> {
+  if (isSubscribable(result)) return new Observable<string | null>((subscriber) => result.subscribe(subscriber));
+  return from(Promise.resolve(result));
+}
+
+function isSubscribable(value: LookupResult): value is Subscribable<string | null> {
+  return typeof value === 'object' && value !== null && typeof (value as Partial<Subscribable<unknown>>).subscribe === 'function';
 }
 
 function abortable<T>(source$: Observable<T>, signal?: AbortSignal): Observable<T> {
