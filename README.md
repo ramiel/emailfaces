@@ -1,15 +1,14 @@
 # emailfaces
 
-Resolve the avatar associated with an email address from multiple sources — like
-[unavatar.io/email](https://unavatar.io), but as a library. Written in TypeScript, with a Promise API
+Resolve the avatar associated with an email address from multiple sources. Written in TypeScript, with a Promise API
 (plus an optional [RxJS API](#observable-api)) and first-class rate-limit handling.
 
 ```ts
-import { createAvatarResolver } from 'emailfaces';
+import { createAvatarResolver } from "emailfaces";
 
 const avatars = createAvatarResolver();
 
-await avatars.resolve('someone@example.com');
+await avatars.resolve("someone@example.com");
 // → { email: 'someone@example.com', source: 'gravatar', url: 'https://gravatar.com/avatar/…?s=200' }
 // → null when no source has one
 ```
@@ -18,21 +17,32 @@ Requires a runtime with `fetch` and Web Crypto (Node ≥ 18, browsers, Deno, Bun
 
 ## Sources
 
-| Source | Factory | How | Default limits |
-|---|---|---|---|
-| Gravatar | `gravatar()` | `HEAD /avatar/<sha256>?d=404` | 10 concurrent |
-| Libravatar | `libravatar({ baseUrl? })` | same protocol, federated | 4 concurrent |
-| GitLab | `gitlab({ baseUrl?, token? })` | `/api/v4/avatar?email=` (public email; Gravatar fallback ignored) | 60/min, 4 concurrent |
-| GitHub | `github({ token? })` | decodes `…@users.noreply.github.com` offline; otherwise user search on public email (single match only) | 10/min (30/min with token), 2 concurrent |
-| Domain icon | `domainIcon()` | organization icon for non-free-mail domains (opt-in) | 4 concurrent |
+| Source      | Factory                        | How                                                                                                     | Default limits                           |
+| ----------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Gravatar    | `gravatar()`                   | `HEAD /avatar/<sha256>?d=404`                                                                           | 10 concurrent                            |
+| Libravatar  | `libravatar({ baseUrl? })`     | same protocol, federated                                                                                | 4 concurrent                             |
+| GitLab      | `gitlab({ baseUrl?, token? })` | `/api/v4/avatar?email=` (public email; Gravatar fallback ignored)                                       | 60/min, 4 concurrent                     |
+| GitHub      | `github({ token? })`           | decodes `…@users.noreply.github.com` offline; otherwise user search on public email (single match only) | 10/min (30/min with token), 2 concurrent |
+| Domain icon | `domainIcon()`                 | organization icon for non-free-mail domains (opt-in)                                                    | 4 concurrent                             |
 
 Default order: `gravatar, libravatar, gitlab, github`. Pick and order your own:
 
 ```ts
-import { createAvatarResolver, gravatar, github, gitlab, domainIcon } from 'emailfaces';
+import {
+  createAvatarResolver,
+  gravatar,
+  github,
+  gitlab,
+  domainIcon,
+} from "emailfaces";
 
 const avatars = createAvatarResolver({
-  sources: [gravatar(), github({ token: process.env.GITHUB_TOKEN }), gitlab(), domainIcon()],
+  sources: [
+    gravatar(),
+    github({ token: process.env.GITHUB_TOKEN }),
+    gitlab(),
+    domainIcon(),
+  ],
 });
 ```
 
@@ -44,15 +54,21 @@ Make HTTP calls through `ctx.request` to get rate limiting, timeouts, retries, a
 `ctx.signal` is aborted when the lookup is no longer needed; pass it to any other async work.
 
 ```ts
-import { RateLimiter, type AvatarSource } from 'emailfaces';
+import { RateLimiter, type AvatarSource } from "emailfaces";
 
 const mySource: AvatarSource = {
-  name: 'directory',
-  limiter: new RateLimiter({ maxConcurrent: 5, window: { requests: 100, perMs: 60_000 } }),
+  name: "directory",
+  limiter: new RateLimiter({
+    maxConcurrent: 5,
+    window: { requests: 100, perMs: 60_000 },
+  }),
   lookup: async (email, ctx) => {
-    const res = await ctx.request(`https://directory.internal/users?email=${encodeURIComponent(email.address)}`, {
-      read: (res) => res.json() as Promise<{ photo?: string }>,
-    });
+    const res = await ctx.request(
+      `https://directory.internal/users?email=${encodeURIComponent(email.address)}`,
+      {
+        read: (res) => res.json() as Promise<{ photo?: string }>,
+      },
+    );
     return res.status === 200 ? (res.body.photo ?? null) : null;
   },
 };
@@ -61,15 +77,22 @@ const mySource: AvatarSource = {
 The same source as an Observable (unsubscribing still aborts the request):
 
 ```ts
-import { from, map } from 'rxjs';
+import { from, map } from "rxjs";
 
 const mySource$: AvatarSource = {
-  name: 'directory',
+  name: "directory",
   limiter: new RateLimiter({ maxConcurrent: 5 }),
   lookup: (email, ctx) =>
-    from(ctx.request(`https://directory.internal/users?email=${encodeURIComponent(email.address)}`, {
-      read: (res) => res.json() as Promise<{ photo?: string }>,
-    })).pipe(map((res) => (res.status === 200 ? (res.body.photo ?? null) : null))),
+    from(
+      ctx.request(
+        `https://directory.internal/users?email=${encodeURIComponent(email.address)}`,
+        {
+          read: (res) => res.json() as Promise<{ photo?: string }>,
+        },
+      ),
+    ).pipe(
+      map((res) => (res.status === 200 ? (res.body.photo ?? null) : null)),
+    ),
 };
 ```
 
@@ -96,9 +119,16 @@ moves on to the next source. For batch jobs that should just wait, set `maxWaitM
 To share a budget, for example several resolvers using one GitHub token, pass the same limiter:
 
 ```ts
-const ghLimiter = new RateLimiter({ maxConcurrent: 2, window: { requests: 30, perMs: 60_000 } });
-const a = createAvatarResolver({ sources: [github({ token, rateLimit: ghLimiter })] });
-const b = createAvatarResolver({ sources: [github({ token, rateLimit: ghLimiter })] });
+const ghLimiter = new RateLimiter({
+  maxConcurrent: 2,
+  window: { requests: 30, perMs: 60_000 },
+});
+const a = createAvatarResolver({
+  sources: [github({ token, rateLimit: ghLimiter })],
+});
+const b = createAvatarResolver({
+  sources: [github({ token, rateLimit: ghLimiter })],
+});
 ```
 
 ## API
@@ -107,9 +137,9 @@ const b = createAvatarResolver({ sources: [github({ token, rateLimit: ghLimiter 
 const avatars = createAvatarResolver(options);
 
 // All accept { signal?: AbortSignal }; aborting cancels in-flight HTTP requests.
-avatars.resolve(email)                          // Promise<Avatar | null>
-avatars.lookup(email)                           // Promise<SourceOutcome[]> – every source's result
-avatars.resolveMany(emails, { concurrency: 4 }) // Promise<{ email, avatar, error? }[]>
+avatars.resolve(email); // Promise<Avatar | null>
+avatars.lookup(email); // Promise<SourceOutcome[]> – every source's result
+avatars.resolveMany(emails, { concurrency: 4 }); // Promise<{ email, avatar, error? }[]>
 ```
 
 `SourceOutcome.status` is `found` | `not_found` | `rate_limited` | `error`. A source that fails never
@@ -124,13 +154,13 @@ Import from `emailfaces/rxjs` to get a resolver that also has an RxJS API. This 
 everything else, so it can be your only import. Unsubscribing cancels in-flight HTTP requests.
 
 ```ts
-import { createAvatarResolver } from 'emailfaces/rxjs';
+import { createAvatarResolver } from "emailfaces/rxjs";
 
 const avatars = createAvatarResolver(options);
 
-avatars.resolve$(email)                            // Observable<Avatar | null>
-avatars.lookup$(email)                             // Observable<SourceOutcome>, emitted as they arrive
-avatars.resolveMany$(emails$, { concurrency: 4 }) // Observable<{ email, avatar, error? }>; array, iterable or Observable input
+avatars.resolve$(email); // Observable<Avatar | null>
+avatars.lookup$(email); // Observable<SourceOutcome>, emitted as they arrive
+avatars.resolveMany$(emails$, { concurrency: 4 }); // Observable<{ email, avatar, error? }>; array, iterable or Observable input
 ```
 
 Errors behave as in the Promise API: `resolve$` / `lookup$` error with `InvalidEmailError`, and
@@ -140,18 +170,18 @@ RxJS is a regular dependency used internally, so the root entry works without in
 
 ### Options
 
-| Option | Default | |
-|---|---|---|
-| `sources` | `defaultSources()` | ordered by priority |
-| `strategy` | `'sequential'` | or `'parallel'` |
-| `size` | `200` | pixels, forwarded to providers |
-| `fetch` | `globalThis.fetch` | |
-| `timeoutMs` | `8000` | per HTTP request (`RequestTimeoutError`) |
-| `retries` | `2` | transient errors (5xx, network, timeout) and rate-limit retries |
-| `maxWaitMs` | `30000` | max wait on a rate limit before the source is skipped |
-| `cache` | `new MemoryCache()` | any `AvatarCache` (sync or async `get`/`set`), or `false` |
-| `cacheTtlMs` / `negativeCacheTtlMs` | 24h / 1h | how long hits and misses stay cached |
-| `fallback` | — | URL or `(email) => url` returned when nothing is found |
+| Option                              | Default             |                                                                 |
+| ----------------------------------- | ------------------- | --------------------------------------------------------------- |
+| `sources`                           | `defaultSources()`  | ordered by priority                                             |
+| `strategy`                          | `'sequential'`      | or `'parallel'`                                                 |
+| `size`                              | `200`               | pixels, forwarded to providers                                  |
+| `fetch`                             | `globalThis.fetch`  |                                                                 |
+| `timeoutMs`                         | `8000`              | per HTTP request (`RequestTimeoutError`)                        |
+| `retries`                           | `2`                 | transient errors (5xx, network, timeout) and rate-limit retries |
+| `maxWaitMs`                         | `30000`             | max wait on a rate limit before the source is skipped           |
+| `cache`                             | `new MemoryCache()` | any `AvatarCache` (sync or async `get`/`set`), or `false`       |
+| `cacheTtlMs` / `negativeCacheTtlMs` | 24h / 1h            | how long hits and misses stay cached                            |
+| `fallback`                          | —                   | URL or `(email) => url` returned when nothing is found          |
 
 Identical lookups that are already running share one set of requests.
 
