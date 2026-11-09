@@ -43,6 +43,7 @@ await avatars.resolve("someone@example.com");
 | GitLab      | `gitlab({ baseUrl?, token? })` | `/api/v4/avatar?email=` (public email; Gravatar fallback ignored)                                       | 60/min, 4 concurrent                     |
 | GitHub      | `github({ token? })`           | decodes `…@users.noreply.github.com` offline; otherwise user search on public email (single match only) | 10/min (30/min with token), 2 concurrent |
 | Domain icon | `domainIcon()`                 | organization icon for non-free-mail domains (opt-in)                                                    | 4 concurrent                             |
+| BIMI        | `bimi({ requireAuthority? })`  | brand logo (SVG) from the domain's `default._bimi` DNS record, via DNS-over-HTTPS (opt-in)              | 4 concurrent                             |
 
 Default order: `gravatar, libravatar, gitlab, github`. Pick and order your own:
 
@@ -63,6 +64,27 @@ const avatars = createAvatarResolver({
     domainIcon(),
   ],
 });
+```
+
+### BIMI
+
+[BIMI](https://bimigroup.org) lets a domain publish its brand logo in DNS (`default._bimi.<domain>`).
+`bimi()` reads that record and returns the logo URL (an SVG). Like `domainIcon()`, it's a company
+logo rather than a personal avatar, so it's opt-in and best placed last.
+
+- Free-mail domains are skipped (Gmail, for example, publishes its own logo); override with `ignoreDomains`.
+- If the exact domain has no record, the parent domain is tried once (`mail.acme.io` → `acme.io`).
+- A record with an empty `l=` (an explicit "no logo"), a non-HTTPS logo, or more than one BIMI record counts as not found.
+- `requireAuthority: true` only accepts records that publish a mark certificate (`a=`). The certificate itself is not validated.
+
+The lookup uses DNS-over-HTTPS (Cloudflare by default, change it with `dohUrl`), so it works in any
+runtime with `fetch`. In Node you can use the system resolver instead (these lookups bypass the rate limiter):
+
+```ts
+import { resolveTxt } from "node:dns/promises";
+import { bimi } from "emailfaces";
+
+bimi({ resolveTxt: (name) => resolveTxt(name) });
 ```
 
 ### Custom sources

@@ -7,6 +7,7 @@ export { gravatar, libravatar, hashedAvatarSource, type HashedSourceOptions } fr
 export { github, type GitHubOptions } from './github.js';
 export { gitlab, type GitLabOptions } from './gitlab.js';
 export { domainIcon, FREE_MAIL_DOMAINS, type DomainIconOptions } from './domain-icon.js';
+export { bimi, type BimiOptions, type TxtResolver } from './bimi.js';
 
 /** Cheapest / most generous sources first; GitHub (10 req/min anonymous) last. */
 export function defaultSources(): AvatarSource[] {
