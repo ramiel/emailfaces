@@ -17,7 +17,7 @@ bun add emailfaces
 
 In Deno, import it directly with `import { createAvatarResolver } from "npm:emailfaces";`.
 
-Requires a runtime with `fetch` and Web Crypto (Node ≥ 18, browsers, Deno, Bun, edge workers).
+Requires a runtime with `fetch` and Web Crypto (Node ≥ 20, browsers, Deno, Bun, edge workers).
 The package is ESM-only: use `import`, not `require()`. TypeScript typings are included, and
 RxJS is installed automatically as a dependency (there is nothing else to install, even for the
 `emailfaces/rxjs` entry).
@@ -226,10 +226,41 @@ RxJS is a regular dependency used internally, so the root entry works without in
 
 Identical lookups that are already running share one set of requests.
 
+## Command line
+
+The package includes an `emailfaces` command that queries every source and shows what each one answers,
+then the avatar the resolver picks. Handy for checking an address or debugging a source.
+
+```sh
+npx emailfaces someone@paypal.com
+```
+
+```
+someone@paypal.com
+  ✓ bimi          227ms  https://www.paypalobjects.com/marketing/web/logos/paypal_ppe.svg
+  · github        298ms  not found
+  · gitlab        311ms  not found
+  ✓ domain        439ms  https://icons.duckduckgo.com/ip3/paypal.com.ico
+  · gravatar      647ms  not found
+  · libravatar   1629ms  not found
+  → domain https://icons.duckduckgo.com/ip3/paypal.com.ico
+```
+
+All sources are queried by default, including the opt-in `domain` and `bimi`. Main options:
+
+- `-s, --sources gravatar,github,bimi`: which sources to use, in priority order
+- `-p, --parallel`: resolve with the `parallel` strategy
+- `--json`: one JSON object per line, for scripts
+- `--size`, `--timeout`, `--max-wait`: same as the resolver options
+
+Emails can be passed as arguments or piped on stdin, one per line. `GITHUB_TOKEN` and `GITLAB_TOKEN`
+are used when set. Run `npx emailfaces --help` for everything.
+
 ## Development
 
 ```sh
 pnpm test        # vitest
 pnpm typecheck
 pnpm build       # → dist/ (ESM + .d.ts)
+pnpm try someone@example.com   # build, then run the emailfaces command from source
 ```

@@ -7,6 +7,7 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "try": "tsc -p tsconfig.json && node dist/cli.js",
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "keywords": [
@@ -37,7 +38,7 @@
   "packageManager": "pnpm@12.18.0",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "rxjs": "^7.8.2"
@@ -58,9 +59,14 @@
     }
   },
   "types": "./dist/index.d.ts",
+  "bin": {
+    "emailfaces": "./dist/cli.js"
+  },
   "files": [
     "dist",
     "src"
   ],
-  "sideEffects": false
+  "sideEffects": [
+    "./dist/cli.js"
+  ]
 }
